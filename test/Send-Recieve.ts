@@ -11,7 +11,9 @@ describe("Sender and Receiver", function () {
     const Sender = await ethers.getContractFactory("Sender");
     const Receiver = await ethers.getContractFactory("Receiver");
     const BurnMintERC677 = await ethers.getContractFactory("BurnMintERC677");
-  
+    // include minting function of USDC
+    const USDC = await ethers.getContractFactory("USDC");
+
     const router = await Router.deploy();
     console.log("Router deployed at:", router.target);
   
@@ -22,18 +24,26 @@ describe("Sender and Receiver", function () {
       BigInt(1e27)
     );
     console.log("LINK token deployed at:", link.target);
+
+    // constructors already fixed in the ERC20 contract i created
+    const usdc = await USDC.deploy();
+    // console.log("USDC token deployed at:", usdc.target);
   
-    const sender = await Sender.deploy(router.target, link);
+    const sender = await Sender.deploy(router, link, usdc.target);
     console.log("Sender deployed at:", sender.target);
   
-    const receiver = await Receiver.deploy(router.target);
+    const receiver = await Receiver.deploy(router);
     console.log("Receiver deployed at:", receiver.target);
   
     await sender.allowlistDestinationChain(chainSelector, true);
     await receiver.allowlistSourceChain(chainSelector, true);
     await receiver.allowlistSender(sender, true);
+
+
+    const mintAmount = BigInt(10000 * 10 ** 18); // Mint an arbitrary amount of USDC
+    await usdc.mint(sender.target, mintAmount);
   
-    return { owner, sender, receiver, router, link };
+    return { owner, sender, receiver, router, link, usdc };
   }
 
   it("should estimate gas for ccipReceive function and use it in the transaction", async function () {
@@ -93,5 +103,41 @@ describe("Sender and Receiver", function () {
         report.increasedGasLimit
       );
     });
+  });
+    
+  it("should estimate gas for transferUsdc function and use it in the transaction", async function () {
+    const { sender, usdc } = await loadFixture(deployFixture);
+
+    const recipient = "0xbE55581E4d10C7C7478169a8c637c07BFf59ED22"; 
+    const amount = BigInt(1 * 10 ** 18 ); // Transfer amount
+
+    const gasEstimate = await ethers.provider.estimateGas({
+      to: sender.target,
+      data: sender.interface.encodeFunctionData("transferUsdc", [
+        recipient,
+        amount,
+        500_000, // Initial gas limit
+      ]),
+    });
+
+    // // Send USDC transfer with an initial gas limit
+    // await sender.transferUsdc(recipient, amount, 500_000); // Use an arbitrary initial gas limit
+
+    // // Retrieve gas used from the last transaction
+    // const transferEvents = await sender.queryFilter(usdc.filters.Transfer());
+    // const transferEvent = transferEvents[transferEvents.length - 1];
+    // const gasUsed = transferEvent.args.gasUsed as bigint; // Ensure gasUsed is treated as bigint
+
+    // Increase gas limit by 10%
+    const increasedGasLimit = gasEstimate * 110n / 100n;
+
+    // Log the estimation and increased gas limit
+    console.log(
+      `Gas Used: ${gasEstimate.toString()}, Increased Gas Limit: ${increasedGasLimit.toString()}`
+    );
+
+    // Use the increased gas limit in the next transaction
+    const tx = await sender.transferUsdc(recipient, amount, increasedGasLimit);
+    await tx.wait();
   });
 });

@@ -13,7 +13,7 @@ import {SafeERC20} from "@chainlink/contracts-ccip/src/v0.8/vendor/openzeppelin-
  * DO NOT USE THIS CODE IN PRODUCTION.
  */
 
-/// @title - A simple sender contract for sending/receving string data across chains.
+/// @title - A simple sender contract for sending/receiving string data across chains.
 contract Sender is OwnerIsCreator {
     using SafeERC20 for IERC20;
 
@@ -27,21 +27,27 @@ contract Sender is OwnerIsCreator {
         uint64 indexed destinationChainSelector, // The chain selector of the destination chain.
         address receiver, // The address of the receiver on the destination chain.
         uint256 iterations, // The number of iterations to be executed.
-        address feeToken, // the token address used to pay CCIP fees.
+        address feeToken, // The token address used to pay CCIP fees.
         uint256 fees // The fees paid for sending the CCIP message.
     );
+
+    // Event emitted when USDC is transferred.
+    event UsdcTransferred(address indexed to, uint256 amount);
 
     // Mapping to keep track of allowlisted destination chains.
     mapping(uint64 => bool) public allowlistedDestinationChains;
 
     IERC20 private s_linkToken;
+    IERC20 private s_usdcToken;
     address private s_router;
 
-    /// @notice Constructor initializes the contract with the router address.
+    /// @notice Constructor initializes the contract with the router address and token addresses.
     /// @param _router The address of the router contract.
-    /// @param _link The address of the link contract.
-    constructor(address _router, address _link) {
+    /// @param _link The address of the LINK token contract.
+    /// @param _usdc The address of the USDC token contract.
+    constructor(address _router, address _link, address _usdc) {
         s_linkToken = IERC20(_link);
+        s_usdcToken = IERC20(_usdc);
         s_router = _router;
     }
 
@@ -126,5 +132,19 @@ contract Sender is OwnerIsCreator {
 
         // Return the CCIP message ID
         return messageId;
+    }
+
+    /// @notice Transfers USDC tokens to the specified address.
+    /// @param _to The address of the recipient.
+    /// @param _amount The amount of USDC tokens to transfer.
+    /// @param _gasLimit The gas limit for the transaction.
+    function transferUsdc(
+        address _to,
+        uint256 _amount,
+        uint256 _gasLimit
+    ) external onlyOwner {
+        require(s_usdcToken.transfer(_to, _amount), "USDC Transfer failed");
+
+        emit UsdcTransferred(_to, _amount);
     }
 }
